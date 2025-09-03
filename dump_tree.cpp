@@ -18,8 +18,8 @@ void dump_tree()
     ofstream outputTrainingFile("mc17606_mu_positive_training.txt");
     ofstream outputValidationFile("mc17606_mu_positive_validation.txt");
 
-    outputTrainingFile << "Event,MuonDecay,CHVL_Hit,CHVR_Hit,CHAMBER_Hit,BHC_Hit,BHD_Hit,BHC_CopyID,BHD_CopyID,BHC_Edep,BHD_Edep,SPSLF_Hit,SPSLR_Hit,SPSRF_Hit,SPSRR_Hit,SPSRF_CopyID,SPSRR_CopyID,SPSLF_CopyID,SPSLR_CopyID,SPSRF_Edep,SPSRR_Edep,SPSLF_Edep,SPSLR_Edep\n";
-    outputValidationFile << "Event,MuonDecay,CHVL_Hit,CHVR_Hit,CHAMBER_Hit,BHC_Hit,BHD_Hit,BHC_CopyID,BHD_CopyID,BHC_Edep,BHD_Edep,SPSLF_Hit,SPSLR_Hit,SPSRF_Hit,SPSRR_Hit,SPSRF_CopyID,SPSRR_CopyID,SPSLF_CopyID,SPSLR_CopyID,SPSRF_Edep,SPSRR_Edep,SPSLF_Edep,SPSLR_Edep\n";
+    outputTrainingFile << "MuonDecay,CHVL_Hit,CHVR_Hit,CHAMBER_Hit,BHC_Hit,BHD_Hit,BHC_CopyID,BHD_CopyID,BHC_Edep,BHD_Edep,SPSLF_Hit,SPSLR_Hit,SPSRF_Hit,SPSRR_Hit,SPSRF_CopyID,SPSRR_CopyID,SPSLF_CopyID,SPSLR_CopyID,SPSRF_Edep,SPSRR_Edep,SPSLF_Edep,SPSLR_Edep\n";
+    outputValidationFile << "MuonDecay,CHVL_Hit,CHVR_Hit,CHAMBER_Hit,BHC_Hit,BHD_Hit,BHC_CopyID,BHD_CopyID,BHC_Edep,BHD_Edep,SPSLF_Hit,SPSLR_Hit,SPSRF_Hit,SPSRR_Hit,SPSRF_CopyID,SPSRR_CopyID,SPSLF_CopyID,SPSLR_CopyID,SPSRF_Edep,SPSRR_Edep,SPSLF_Edep,SPSLR_Edep\n";
 
     int events = 0;
     for(int ind = 1; ind < 29; ind++)
@@ -75,7 +75,7 @@ void dump_tree()
             t->GetEntry(i);
             if(ind < 20)
             {
-                outputTrainingFile << events << "," << MuonDecay << "," << CHVL_Hit << "," << CHVR_Hit << "," << CHAMBER_Hit << "," << BHC_Hit << "," << BHD_Hit;
+                outputTrainingFile << MuonDecay << "," << CHVL_Hit << "," << CHVR_Hit << "," << CHAMBER_Hit << "," << BHC_Hit << "," << BHD_Hit;
                 output_vector(outputTrainingFile,BHC_CopyID);
                 output_vector(outputTrainingFile,BHD_CopyID);
                 output_vector(outputTrainingFile,BHC_Edep);
@@ -93,7 +93,7 @@ void dump_tree()
             }
             else
             {
-                outputValidationFile << events << "," << MuonDecay << "," << CHVL_Hit << "," << CHVR_Hit << "," << CHAMBER_Hit << "," << BHC_Hit << "," << BHD_Hit;
+                outputValidationFile << MuonDecay << "," << CHVL_Hit << "," << CHVR_Hit << "," << CHAMBER_Hit << "," << BHC_Hit << "," << BHD_Hit;
                 output_vector(outputValidationFile,BHC_CopyID);
                 output_vector(outputValidationFile,BHD_CopyID);
                 output_vector(outputValidationFile,BHC_Edep);

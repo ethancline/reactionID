@@ -3,7 +3,7 @@ import torch.nn as nn
 from torch.utils.data import DataLoader, Dataset
 import time
 
-input_size = 22
+input_size = 1
 
 class inputLineData(Dataset):
     def __init__(self,data_values,line_parameters):
@@ -24,36 +24,45 @@ class reactionLearner(nn.Module):
     def __init__(self): 
         super(reactionLearner, self).__init__()
         self.sequence = nn.Sequential( 
-            nn.Conv2d(2, 8, kernel_size=(10,4), padding=(5,2), bias=False), # 0
-            nn.BatchNorm2d(8), # 1 
-            nn.ReLU(inplace=True), # 2
-            nn.Dropout2d(0.075), # 3
+            # nn.Conv2d(1, 8, kernel_size=(10,4), padding=(5,2), bias=False), # 0
+            # nn.BatchNorm2d(8), # 1 
+            # nn.ReLU(inplace=True), # 2
+            # nn.Dropout2d(0.075), # 3
 
-            nn.Conv2d(8, 16, kernel_size=(5,4), padding=(2,2), bias=False), # 4
-            nn.BatchNorm2d(16), # 5
-            nn.ReLU(inplace=True), # 6
-            nn.Dropout2d(0.075), # 7
+            # nn.Conv2d(8, 16, kernel_size=(5,4), padding=(2,2), bias=False), # 4
+            # nn.BatchNorm2d(16), # 5
+            # nn.ReLU(inplace=True), # 6
+            # nn.Dropout2d(0.075), # 7
 
-            nn.Conv2d(16, 1, kernel_size=2), # 8
-            nn.ReLU(inplace=True), # 9
-            nn.Dropout2d(0.075), # 10
+            # nn.Conv2d(16, 1, kernel_size=2), # 8
+            # nn.ReLU(inplace=True), # 9
+            # nn.Dropout2d(0.075), # 10
 
-            nn.Flatten(), # 11
-            nn.Linear(900, 256, bias=False), # 12
-            nn.ReLU(inplace=True), # 13
-            nn.BatchNorm1d(256), # 14
+            # nn.Flatten(), # 11
+            # nn.Linear(900, 256, bias=False), # 12
+            # nn.ReLU(inplace=True), # 13
+            # nn.BatchNorm1d(256), # 14
 
-            nn.Linear(256, input_size) # 15
+            nn.Linear(21, 256), # 15
+            nn.ReLU(inplace=True), # 16
+            nn.BatchNorm1d(256), # 17
+            nn.Linear(256, 21),
+            nn.ReLU(inplace=True), # 18
+            nn.BatchNorm1d(21), # 19
+            nn.Linear(21, 1)
+
         )
 
     def forward(self, x):
         return self.sequence(x)
 
-def save_model(model, optimizer, epoch, loss, filename):
+def save_model(model, optimizer, epoch, loss, lr, filename):
     checkpoint={'model_state_dict':model.state_dict(),
                 'optimizer_state_dict':optimizer.state_dict(),
                 'epoch' : epoch,
-                'loss' : loss} 
+                'loss' : loss,
+                'lr' : lr
+            } 
     torch.save(checkpoint,filename)
 
 def load_model(model, checkpoint_path):
@@ -61,14 +70,9 @@ def load_model(model, checkpoint_path):
     checkpoint = torch.load(checkpoint_path,weights_only=True)
     model.load_state_dict(checkpoint['model_state_dict'])
     print("Model loaded!")
-    return model
+    lr = checkpoint['lr'] if 'lr' in checkpoint else 1e-2
+    return model, lr
 
-def MaskedBCELoss(truth, predicted):
-    mask = (truth != -1.0)
-    t, p = truth[mask], predicted[mask]
-
-    loss = nn.BCEWithLogitsLoss()(p,t) # Model outputs logits
-    return loss 
 
 def train_model(model, data, truth, num_epochs=2500, device="cpu", learning_rate=1e-2, savePath="model/default.pth", validData=None, validDecay=None):
     input_data = inputLineData(data_values=data, line_parameters=truth)
@@ -98,7 +102,8 @@ def train_model(model, data, truth, num_epochs=2500, device="cpu", learning_rate
             batch_data, batch_values = batch_data.to(device), batch_values.to(device)
             optimizer.zero_grad()
             output = model(batch_data)
-            loss = MaskedBCELoss(truth=batch_values, predicted=output)
+            batch_values = batch_values.unsqueeze(1)
+            loss = nn.BCEWithLogitsLoss()(output, batch_values)
             loss.backward()
             optimizer.step()            
 
@@ -118,7 +123,8 @@ def train_model(model, data, truth, num_epochs=2500, device="cpu", learning_rate
                 for d, v in valid_loader:
                     d, v = d.to(device), v.to(device)
                     out1 = model(d)
-                    loss = MaskedBCELoss(truth=v, predicted=out1)
+                    v = v.unsqueeze(1)
+                    loss = nn.BCEWithLogitsLoss()(out1,v)
                     batch_size = v.size(0)
                     avg_loss += loss.item() * batch_size
                     total_samples += batch_size 
@@ -136,6 +142,6 @@ def train_model(model, data, truth, num_epochs=2500, device="cpu", learning_rate
     end = time.perf_counter()
     print(f'Trained in {round((end-start)/60,3)} minutes!')
     print(f'Saving model to {savePath}...')
-    save_model(model=model,optimizer=optimizer,epoch=num_epochs,loss=losses[-1],filename=savePath)
+    save_model(model=model,optimizer=optimizer,epoch=num_epochs,loss=losses[-1],lr=lr[-1],filename=savePath)
     print(f'Saved!')
     return model, num_epochs, losses, valid_losses, lr
