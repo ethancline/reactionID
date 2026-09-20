@@ -42,15 +42,19 @@ class reactionLearner(nn.Module):
             # nn.Linear(900, 256, bias=False), # 12
             # nn.ReLU(inplace=True), # 13
             # nn.BatchNorm1d(256), # 14
-
-            nn.Linear(21, 256), # 15
+            nn.Linear(33, 256), # 15
             nn.ReLU(inplace=True), # 16
             nn.BatchNorm1d(256), # 17
-            nn.Linear(256, 21),
+            nn.Linear(256, 512),
             nn.ReLU(inplace=True), # 18
-            nn.BatchNorm1d(21), # 19
-            nn.Linear(21, 1)
-
+            nn.BatchNorm1d(512), # 19
+            nn.Linear(512, 1024),
+            nn.ReLU(inplace=True), # 18
+            nn.BatchNorm1d(1024), # 19
+            nn.Linear(1024, 256),
+            nn.ReLU(inplace=True), # 20
+            nn.BatchNorm1d(256), # 21
+            nn.Linear(256, 1)
         )
 
     def forward(self, x):
@@ -78,7 +82,7 @@ def train_model(model, data, truth, num_epochs=2500, device="cpu", learning_rate
     input_data = inputLineData(data_values=data, line_parameters=truth)
     train_loader = DataLoader(input_data, batch_size=128, shuffle=True, drop_last=True, pin_memory=False, num_workers=1, prefetch_factor=1)
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate, weight_decay=1e-6)
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=50, T_mult=2, eta_min=1e-8)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=10, T_mult=2, eta_min=1e-8)
 
     # if(os.path.exists(save_path)):
     #     print("Loading previous model...")

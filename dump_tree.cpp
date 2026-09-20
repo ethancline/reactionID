@@ -18,8 +18,8 @@ void dump_tree()
     ofstream outputTrainingFile("mc17606_mu_positive_training.txt");
     ofstream outputValidationFile("mc17606_mu_positive_validation.txt");
 
-    outputTrainingFile << "MuonDecay,CHVL_Hit,CHVR_Hit,CHAMBER_Hit,BHC_Hit,BHD_Hit,BHC_CopyID,BHD_CopyID,BHC_Edep,BHD_Edep,SPSLF_Hit,SPSLR_Hit,SPSRF_Hit,SPSRR_Hit,SPSRF_CopyID,SPSRR_CopyID,SPSLF_CopyID,SPSLR_CopyID,SPSRF_Edep,SPSRR_Edep,SPSLF_Edep,SPSLR_Edep\n";
-    outputValidationFile << "MuonDecay,CHVL_Hit,CHVR_Hit,CHAMBER_Hit,BHC_Hit,BHD_Hit,BHC_CopyID,BHD_CopyID,BHC_Edep,BHD_Edep,SPSLF_Hit,SPSLR_Hit,SPSRF_Hit,SPSRR_Hit,SPSRF_CopyID,SPSRR_CopyID,SPSLF_CopyID,SPSLR_CopyID,SPSRF_Edep,SPSRR_Edep,SPSLF_Edep,SPSLR_Edep\n";
+    outputTrainingFile << "MuonDecay,MuonDecay_X,MuonDecay_Y,MuonDecay_Z,BHC_Hit,BHD_Hit,BHC_CopyID,BHD_CopyID,BHC_Edep,BHD_Edep,SPSLF_Hit,SPSLR_Hit,SPSRF_Hit,SPSRR_Hit,SPSRF_CopyID,SPSRR_CopyID,SPSLF_CopyID,SPSLR_CopyID,SPSRF_Edep,SPSRR_Edep,SPSLF_Edep,SPSLR_Edep,sttx,stty,sttz,sttdirx,sttdiry,sttdirz,gemx,gemy,gemz,gemdirx,gemdiry,gemdirz,vetomul,vetoedep,vetobar\n";
+    outputValidationFile << "MuonDecay,MuonDecay_X,MuonDecay_Y,MuonDecay_Z,BHC_Hit,BHD_Hit,BHC_CopyID,BHD_CopyID,BHC_Edep,BHD_Edep,SPSLF_Hit,SPSLR_Hit,SPSRF_Hit,SPSRR_Hit,SPSRF_CopyID,SPSRR_CopyID,SPSLF_CopyID,SPSLR_CopyID,SPSRF_Edep,SPSRR_Edep,SPSLF_Edep,SPSLR_Edep,sttx,stty,sttz,sttdirx,sttdiry,sttdirz,gemx,gemy,gemz,gemdirx,gemdiry,gemdirz,vetomul,vetoedep,vetobar\n";
 
     int events = 0;
     for(int ind = 1; ind < 29; ind++)
@@ -29,7 +29,7 @@ void dump_tree()
         TFile *f = new TFile(file);
         TTree *t = (TTree*)f->Get("T");
 
-        int CHVL_Hit,CHVR_Hit,CHAMBER_Hit,BHC_Hit,BHD_Hit,SPSRF_Hit,SPSRR_Hit,SPSLF_Hit,SPSLR_Hit;
+        int BHC_Hit,BHD_Hit,SPSRF_Hit,SPSRR_Hit,SPSLF_Hit,SPSLR_Hit;
         bool MuonDecay;
         std::vector<int> *BHC_CopyID = nullptr;
         std::vector<int> *BHD_CopyID = nullptr;
@@ -46,9 +46,6 @@ void dump_tree()
         std::vector<double> *SPSLR_CopyID = nullptr;
 
         t->SetBranchAddress("MuonDecay",&MuonDecay);
-        t->SetBranchAddress("CHVL_Hit",&CHVL_Hit);
-        t->SetBranchAddress("CHVR_Hit",&CHVR_Hit);
-        t->SetBranchAddress("CHAMBER_Hit",&CHAMBER_Hit);
         t->SetBranchAddress("BHC_Hit",&BHC_Hit);
         t->SetBranchAddress("BHD_Hit",&BHD_Hit);
         t->SetBranchAddress("SPSRF_Hit",&SPSRF_Hit);
@@ -75,7 +72,7 @@ void dump_tree()
             t->GetEntry(i);
             if(ind < 20)
             {
-                outputTrainingFile << MuonDecay << "," << CHVL_Hit << "," << CHVR_Hit << "," << CHAMBER_Hit << "," << BHC_Hit << "," << BHD_Hit;
+                outputTrainingFile << MuonDecay << "," << BHC_Hit << "," << BHD_Hit;
                 output_vector(outputTrainingFile,BHC_CopyID);
                 output_vector(outputTrainingFile,BHD_CopyID);
                 output_vector(outputTrainingFile,BHC_Edep);
@@ -93,7 +90,7 @@ void dump_tree()
             }
             else
             {
-                outputValidationFile << MuonDecay << "," << CHVL_Hit << "," << CHVR_Hit << "," << CHAMBER_Hit << "," << BHC_Hit << "," << BHD_Hit;
+                outputValidationFile << MuonDecay << "," << BHC_Hit << "," << BHD_Hit;
                 output_vector(outputValidationFile,BHC_CopyID);
                 output_vector(outputValidationFile,BHD_CopyID);
                 output_vector(outputValidationFile,BHC_Edep);

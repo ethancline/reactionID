@@ -9,7 +9,7 @@ from sklearn.metrics import roc_curve, auc, precision_recall_curve, average_prec
 
 import reactionModel
 
-def plot_and_test_model_BCE(model, losses=None, valid_losses=None, num_epochs=2500, device=None, straws=None, truth=None, lr=None):
+def plot_and_test_model_BCE(model, losses=None, valid_losses=None, num_epochs=2500, device=None, straws=None, truth=None, lr=None, trainLoc=None, validLoc=None):
     _,ax = plt.subplots(ncols=2, nrows=2, figsize=(10,10),constrained_layout=True)
     if losses is not None:
         ax[0,0].plot(range(0,num_epochs),losses,color='r',label='Training Loss Curve')
@@ -40,7 +40,7 @@ def plot_and_test_model_BCE(model, losses=None, valid_losses=None, num_epochs=25
     test_loader = DataLoader(input_data, batch_size=256, shuffle=True) # Doesn't matter for validation besides batch size
     predicted, truth = [], []
     raw_output, sigmoid_output = [], []
-    hitradii = []
+    decay = []
     print("Validating model...")
     with torch.no_grad():
         tot_loss = 0.0
@@ -55,7 +55,7 @@ def plot_and_test_model_BCE(model, losses=None, valid_losses=None, num_epochs=25
             batch_values = torch.flatten(batch_values)
             mask = (batch_values != -1)
             output = torch.flatten(output)
-            hitradii.append(batch_data[:, 1].reshape(batch_size, 1).flatten()[mask])
+            decay.append(batch_data[:, 1].reshape(batch_size, 1).flatten()[mask])
             raw_output.append(output[mask])
             output = torch.sigmoid(output)  
             sigmoid_output.append(output[mask])
@@ -65,7 +65,7 @@ def plot_and_test_model_BCE(model, losses=None, valid_losses=None, num_epochs=25
         print(f'Average Loss: {tot_loss/tot_samples:.5f}')
     predicted, truth = torch.cat(predicted).cpu().numpy(), torch.cat(truth).cpu().numpy()
     raw_output, sigmoid_output = torch.cat(raw_output).cpu().numpy(), torch.cat(sigmoid_output).cpu().numpy()
-    hitradii = torch.cat(hitradii).cpu().numpy()
+    decay = torch.cat(decay).cpu().numpy()
 
     correct_mask = truth == predicted
 
@@ -73,9 +73,9 @@ def plot_and_test_model_BCE(model, losses=None, valid_losses=None, num_epochs=25
     print(f'Percent on the correct side: {np.sum(same_side)/len(same_side)*100.:.3f}')
 
     h = ax[0,1].hist2d(truth, predicted, bins=2, cmin=1)
-    ax[0,1].set_title(f'Truth vs Predicted Sides')
-    ax[0,1].set_xlabel('Truth Side')
-    ax[0,1].set_ylabel('Predicted Side')
+    ax[0,1].set_title(f'Truth vs Predicted Decay')
+    ax[0,1].set_xlabel('Truth Decay')
+    ax[0,1].set_ylabel('Predicted Decay')
     plt.colorbar(h[3], ax=ax[0,1], label='Entries')
 
     ax[1,0].hist(truth, bins=3, label='Truth', alpha=0.5, histtype='step')
@@ -83,8 +83,8 @@ def plot_and_test_model_BCE(model, losses=None, valid_losses=None, num_epochs=25
     ax[1,0].set_title('Truth and Predicted Distributions')
     ax[1,0].set_xlabel('Value')
     ax[1,0].set_ylabel('Counts')
-    ax[1,0].set_xticks([0.25, 0.75])
-    ax[1,0].set_xticklabels(['Right', 'Left'])
+    ax[1,0].set_xticks([0., 1.])
+    ax[1,0].set_xticklabels(['No Decay', 'Decay'])
     ax[1,0].legend()
 
     ax[1,1].hist(raw_output, bins=50, label=fr'$\mu={np.mean(raw_output):.3f}$'+'\n'+fr'$\sigma={np.std(raw_output):.3f}$')
@@ -95,6 +95,35 @@ def plot_and_test_model_BCE(model, losses=None, valid_losses=None, num_epochs=25
     ax[1,1].legend()
 
     plt.savefig("bce_loss_residuals_10.pdf", bbox_inches="tight", dpi=300)
+
+    _, locationax = plt.subplots(ncols=2, nrows=2, figsize=(10,10), constrained_layout=True)
+    tempLoc = validLoc
+    locMask = np.where((validLoc[:,0] != -10000) & (validLoc[:,1] != -10000) & (validLoc[:,2] != -10000), 1, 0)
+    tempLoc = tempLoc[locMask]
+    h1 = locationax[0,0].hist2d(validLoc[~correct_mask,0],validLoc[~correct_mask,1],bins=1000,cmap='viridis',cmin=1,vmin=1,vmax=500)
+    locationax[0,0].set_title('Y vs X of Decay for Identifing Decay as Scattering')
+    locationax[0,0].set_xlabel('X Coordinate')
+    locationax[0,0].set_ylabel('Y Coordinate')
+    plt.colorbar(h1[3], ax=locationax[0,0], label='Counts')
+    locationax[0,0].set_xlim(-1000,1000)
+    locationax[0,0].set_ylim(-1000,1000)
+
+    h1 = locationax[0,1].hist2d(validLoc[~correct_mask,2],validLoc[~correct_mask,0],bins=1000,cmap='viridis',cmin=1,vmin=1,vmax=500)
+    locationax[0,1].set_title('Z vs X of Decay for Identifing Decay as Scattering')
+    locationax[0,1].set_xlabel('Z Coordinate')
+    locationax[0,1].set_ylabel('X Coordinate')
+    plt.colorbar(h1[3], ax=locationax[0,1], label='Counts')
+    locationax[0,1].set_xlim(-2000,2000)
+    locationax[0,1].set_ylim(-1000,1000)
+
+    h1 = locationax[1,0].hist2d(validLoc[~correct_mask,2],validLoc[~correct_mask,1],bins=1000,cmap='viridis',cmin=1,vmin=1,vmax=500)
+    locationax[1,0].set_title('Z vs Y of Decay for Identifing Decay as Scattering')
+    locationax[1,0].set_xlabel('Z Coordinate')
+    locationax[1,0].set_ylabel('Y Coordinate')
+    plt.colorbar(h1[3], ax=locationax[1,0], label='Counts')
+    locationax[1,0].set_xlim(-2000,2000)
+    locationax[1,0].set_ylim(-1000,1000)
+
 
     _, ax2 = plt.subplots(ncols=2, nrows=2, figsize=(10,10), constrained_layout=True)
 
@@ -155,8 +184,8 @@ def plot_and_test_model_BCE(model, losses=None, valid_losses=None, num_epochs=25
     plt.colorbar(h[3], ax=ax3[0,0], label='Counts')
 
     bad_indices, good_indices = np.where(truth != predicted)[0], np.where(correct_mask)[0]
-    ax3[0,1].hist(raw_output[bad_indices], bins=30, label='Wrong Predictions', alpha=0.5, histtype='step')
-    ax3[0,1].hist(raw_output[good_indices], bins=30, label='Correct Predictions', alpha=0.5, histtype='step')
+    ax3[0,1].hist(raw_output[bad_indices], bins=60, label='Wrong Predictions', alpha=0.5, histtype='step')
+    ax3[0,1].hist(raw_output[good_indices], bins=60, label='Correct Predictions', alpha=0.5, histtype='step')
     ax3[0,1].axvline(x=-2.5, color='red', linestyle='--', alpha=0.5, label='Threshold')
     ax3[0,1].axvline(x=2.5, color='red', linestyle='--', alpha=0.5)
     ax3[0,1].set_title('Logit Distribution by Prediction')
@@ -164,15 +193,15 @@ def plot_and_test_model_BCE(model, losses=None, valid_losses=None, num_epochs=25
     ax3[0,1].set_ylabel('Counts')
     ax3[0,1].legend()
     
-    ax3[1,0].hist(hitradii, bins=30, label="Hit Radii", alpha=0.5, histtype='step')
-    ax3[1,0].hist(hitradii[bad_indices], bins=30, label='Wrong Predictions', alpha=0.5, histtype='step')
-    ax3[1,0].hist(hitradii[good_indices], bins=30, label='Correct Predictions', alpha=0.5, histtype='step')
+    ax3[1,0].hist(decay, bins=30, label="Hit Radii", alpha=0.5, histtype='step')
+    ax3[1,0].hist(decay[bad_indices], bins=30, label='Wrong Predictions', alpha=0.5, histtype='step')
+    ax3[1,0].hist(decay[good_indices], bins=30, label='Correct Predictions', alpha=0.5, histtype='step')
     ax3[1,0].set_title('Hit Radius Distribution by Prediction')
     ax3[1,0].set_xlabel('Hit Radius (mm)')
     ax3[1,0].set_ylabel('Counts')
     ax3[1,0].legend()
 
-    h = ax3[1,1].hist2d(hitradii, raw_output, bins=30, cmap='viridis', cmin=1)
+    h = ax3[1,1].hist2d(decay, raw_output, bins=30, cmap='viridis', cmin=1)
     ax3[1,1].set_title('Logit vs Hit Radius')
     ax3[1,1].set_xlabel('Hit Radius (mm)')
     ax3[1,1].set_ylabel('Logit Value')
