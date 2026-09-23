@@ -1,0 +1,81 @@
+{
+ "input_columns": 135,
+ "valid": "data/valid.csv",
+ "valid_rows": 101380,
+ "valid_unique": 101371,
+ "overlap": [
+  {
+   "train": "data/train.csv",
+   "rows": 236340,
+   "unique": 236323,
+   "shared_with_valid": 1,
+   "weight_min": 1.0,
+   "weight_max": 1.0
+  },
+  {
+   "train": "data_15Apr25/train.csv",
+   "rows": 871879,
+   "unique": 871803,
+   "shared_with_valid": 1,
+   "weight_min": 1.0,
+   "weight_max": 1.0
+  }
+ ],
+ "single_feature_auc": [
+  {
+   "name": "tof_raw",
+   "auc": 0.781738596996097
+  },
+  {
+   "name": "sps_corr_qdc",
+   "auc": 0.7585168065645886
+  },
+  {
+   "name": "vtx_ez",
+   "auc": 0.7356708524570195
+  },
+  {
+   "name": "veto_bar",
+   "auc": 0.7342544710969833
+  },
+  {
+   "name": "veto_edep",
+   "auc": 0.7339715510940981
+  },
+  {
+   "name": "veto_edep_sum",
+   "auc": 0.7332667684306826
+  },
+  {
+   "name": "veto_time",
+   "auc": 0.7284645878382555
+  },
+  {
+   "name": "veto_mult",
+   "auc": 0.7262486002234491
+  },
+  {
+   "name": "stt_dirz",
+   "auc": 0.7174867097127473
+  },
+  {
+   "name": "gem_chi2",
+   "auc": 0.7097230236424698
+  }
+ ],
+ "rid_flags": {
+  "rid_is_intime_tof": {
+   "defined": 68098,
+   "true": 3
+  },
+  "rid_is_decay": {
+   "defined": 68098,
+   "true": 68098
+  }
+ },
+ "stale": {
+  "rid": "/Users/ethancline/MUSE/reactionID/cooked/mc17606_210MeV_LH2_2_RID.root",
+  "tree_entries": 109366,
+  "stale": 7986
+ }
+}

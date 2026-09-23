@@ -1,0 +1,123 @@
+{
+ "label": "decay_relevant",
+ "groups": [
+  {
+   "key": "vertex_pull",
+   "label": "vertex angle/DOCA pulls",
+   "n_cols": 7,
+   "auc": 0.9984653828312967,
+   "auc_reco": 0.999758299655079,
+   "error_ratio": 0.984874685135264
+  },
+  {
+   "key": "vertex_geom",
+   "label": "vertex position, angle, DOCA",
+   "n_cols": 11,
+   "auc": 0.9984117895133506,
+   "auc_reco": 0.9997297848282768,
+   "error_ratio": 1.0192693883967272
+  },
+  {
+   "key": "bm",
+   "label": "beam monitor walls",
+   "n_cols": 17,
+   "auc": 0.9983879362721249,
+   "auc_reco": 0.9997507158709039,
+   "error_ratio": 1.03457773625103
+  },
+  {
+   "key": "oot",
+   "label": "out-of-time scintillator hits",
+   "n_cols": 2,
+   "auc": 0.9984418147893683,
+   "auc_reco": 0.9997486182284725,
+   "error_ratio": 1.0
+  },
+  {
+   "key": "doca_signed",
+   "label": "signed DOCA components",
+   "n_cols": 12,
+   "auc": 0.9984445057827378,
+   "auc_reco": 0.999742506827927,
+   "error_ratio": 0.9982729951798357
+  },
+  {
+   "key": "scint_time",
+   "label": "per-wall in-time time",
+   "n_cols": 7,
+   "auc": 0.9977069217501446,
+   "auc_reco": 0.9996211208994368,
+   "error_ratio": 1.4716339458296988
+  },
+  {
+   "key": "tof",
+   "label": "time of flight and BH/SPS correlation",
+   "n_cols": 6,
+   "auc": 0.9984539875093748,
+   "auc_reco": 0.9997273720352395,
+   "error_ratio": 0.9921878863158471
+  },
+  {
+   "key": "kink",
+   "label": "front/rear STT half-chamber split",
+   "n_cols": 11,
+   "auc": 0.9984446173324628,
+   "auc_reco": 0.9997539505767206,
+   "error_ratio": 0.9982014056638709
+  },
+  {
+   "key": "stt",
+   "label": "STT track",
+   "n_cols": 11,
+   "auc": 0.9981508471063127,
+   "auc_reco": 0.9996906784199185,
+   "error_ratio": 1.1867349793017434
+  },
+  {
+   "key": "gem",
+   "label": "GEM track",
+   "n_cols": 13,
+   "auc": 0.9984071170748635,
+   "auc_reco": 0.9997445565674663,
+   "error_ratio": 1.0222680296719995
+  }
+ ],
+ "n_train": 888272,
+ "n_valid": 81126,
+ "n_inputs": 135,
+ "rf": {
+  "with": 0.9984427784869938,
+  "only": 0.9764961825384062,
+  "without": 0.9984418147893683,
+  "n_cols": 14
+ },
+ "train": "data/train.csv,data_15Apr25/train.csv",
+ "gbdt_params": {
+  "max_iter": 800,
+  "learning_rate": 0.05,
+  "early_stopping": true,
+  "validation_fraction": 0.1,
+  "max_leaf_nodes": 255,
+  "min_samples_leaf": 20,
+  "l2_regularization": 5.0,
+  "max_bins": 255
+ },
+ "positive_fraction": 0.15666987155782364,
+ "reco_fraction": 0.7778270837955773,
+ "all_inputs": {
+  "auc": 0.9984418147893683,
+  "auc_reco": 0.9997486182284725
+ },
+ "nan_only": {
+  "auc": 0.909572319388805,
+  "n_cols": 105
+ },
+ "old_label": {
+  "auc": 0.991528970915279
+ },
+ "without_new_inputs": {
+  "auc": 0.9975476661175505,
+  "auc_reco": 0.99960442548095,
+  "n_removed": 54
+ }
+}

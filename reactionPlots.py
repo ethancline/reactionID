@@ -1,277 +1,281 @@
 import matplotlib.pyplot as plt
-from matplotlib.colors import LogNorm
+import numpy as np
 import torch
 import torch.nn as nn
-from torch.utils.data import DataLoader, Dataset
-import numpy as np
-from sklearn.metrics import roc_curve, auc, precision_recall_curve, average_precision_score
-
+from sklearn.metrics import auc, average_precision_score, precision_recall_curve, roc_curve
+from torch.utils.data import DataLoader
 
 import reactionModel
 
-def plot_and_test_model_BCE(model, losses=None, valid_losses=None, num_epochs=2500, device=None, straws=None, truth=None, lr=None, trainLoc=None, validLoc=None):
-    _,ax = plt.subplots(ncols=2, nrows=2, figsize=(10,10),constrained_layout=True)
-    if losses is not None:
-        ax[0,0].plot(range(0,num_epochs),losses,color='r',label='Training Loss Curve')
-        a = None
-        print(f'Minimum training loss: {min(losses):.5f}')
-        if valid_losses is not None:
-            ax[0,0].plot(range(0,num_epochs),valid_losses,color='b',label='Validation Loss Curve')
-            print(f'Minimum validation loss: {min(valid_losses):.5f}')
-        if lr is not None:
-            a = ax[0,0].twinx()
-            a.set_ylabel('Learning Rate',color='g')
-            a.plot(range(0,num_epochs),lr,color='g',label='Learning Rate', alpha=0.5, linestyle='--')
-            a.tick_params(axis='y', labelcolor='g')
-            a.yaxis.set_major_formatter('{:.3g}'.format)
-        if a is not None:
-            lines, labels = ax[0,0].get_legend_handles_labels()
-            lines2, labels2 = a.get_legend_handles_labels()
-            ax[0,0].legend(lines + lines2, labels + labels2,fontsize=7.5)
-        else:
-            ax[0,0].legend()
+# Region codes written by muonDecay_out. The binary label lumps decays in the target
+# together with decays metres downstream of SPS; these are very different problems.
+REGION_NAMES = {0: "no decay", 1: "upstream", 2: "target", 3: "downstream"}
 
-    ax[0,0].set_title('Loss vs Epoch')
-    ax[0,0].set_xlabel('Epoch')
-    ax[0,0].set_ylabel('Loss')
-    ax[0,0].set_yscale('log')
+
+def predict(model, X, y, device, batch_size=512):
+    """Run the model over X in file order.
+
+    The validation loader must not shuffle: the returned arrays are matched
+    row-by-row against the metadata frame by the callers below.
+    """
     model.eval()
-    input_data = reactionModel.inputLineData(data_values=torch.tensor(straws, dtype=torch.float32), line_parameters=torch.tensor(truth, dtype=torch.float32))
-    test_loader = DataLoader(input_data, batch_size=256, shuffle=True) # Doesn't matter for validation besides batch size
-    predicted, truth = [], []
-    raw_output, sigmoid_output = [], []
-    decay = []
-    print("Validating model...")
+    ds = reactionModel.inputLineData(data_values=torch.tensor(X, dtype=torch.float32), line_parameters=torch.tensor(y, dtype=torch.float32))
+    loader = DataLoader(ds, batch_size=batch_size, shuffle=False, drop_last=False)
+
+    logits, truth = [], []
+    criterion = nn.BCEWithLogitsLoss()
+    tot_loss, tot_n = 0.0, 0
     with torch.no_grad():
-        tot_loss = 0.0
-        tot_samples = 0
-        for batch_data, batch_values in test_loader:
-            batch_data, batch_values = batch_data.to(device), batch_values.to(device)
-            output = model(batch_data)
-            batch_size = batch_values.size(0)
-            loss = nn.BCEWithLogitsLoss()(output, batch_values.unsqueeze(1)).item() * batch_size
-            tot_loss += loss
-            tot_samples += batch_size
-            batch_values = torch.flatten(batch_values)
-            mask = (batch_values != -1)
-            output = torch.flatten(output)
-            decay.append(batch_data[:, 1].reshape(batch_size, 1).flatten()[mask])
-            raw_output.append(output[mask])
-            output = torch.sigmoid(output)  
-            sigmoid_output.append(output[mask])
-            output = (output > 0.5).float() 
-            predicted.append(output[mask])
-            truth.append(batch_values[mask])
-        print(f'Average Loss: {tot_loss/tot_samples:.5f}')
-    predicted, truth = torch.cat(predicted).cpu().numpy(), torch.cat(truth).cpu().numpy()
-    raw_output, sigmoid_output = torch.cat(raw_output).cpu().numpy(), torch.cat(sigmoid_output).cpu().numpy()
-    decay = torch.cat(decay).cpu().numpy()
+        for xb, yb in loader:
+            xb, yb = xb.to(device), yb.to(device)
+            out = model(xb)
+            n = yb.size(0)
+            tot_loss += criterion(out, yb.unsqueeze(1)).item() * n
+            tot_n += n
+            logits.append(torch.flatten(out).cpu())
+            truth.append(torch.flatten(yb).cpu())
 
-    correct_mask = truth == predicted
-
-    same_side = np.where((correct_mask), 1, 0)
-    print(f'Percent on the correct side: {np.sum(same_side)/len(same_side)*100.:.3f}')
-
-    h = ax[0,1].hist2d(truth, predicted, bins=2, cmin=1)
-    ax[0,1].set_title(f'Truth vs Predicted Decay')
-    ax[0,1].set_xlabel('Truth Decay')
-    ax[0,1].set_ylabel('Predicted Decay')
-    plt.colorbar(h[3], ax=ax[0,1], label='Entries')
-
-    ax[1,0].hist(truth, bins=3, label='Truth', alpha=0.5, histtype='step')
-    ax[1,0].hist(predicted, bins=3, label='Predicted', alpha=0.5, histtype='step')
-    ax[1,0].set_title('Truth and Predicted Distributions')
-    ax[1,0].set_xlabel('Value')
-    ax[1,0].set_ylabel('Counts')
-    ax[1,0].set_xticks([0., 1.])
-    ax[1,0].set_xticklabels(['No Decay', 'Decay'])
-    ax[1,0].legend()
-
-    ax[1,1].hist(raw_output, bins=50, label=fr'$\mu={np.mean(raw_output):.3f}$'+'\n'+fr'$\sigma={np.std(raw_output):.3f}$')
-    ax[1,1].set_title('Logit Distribution')
-    ax[1,1].set_xlabel('Logit Value')
-    ax[1,1].set_ylabel('Counts')
-    ax[1,1].xaxis.set_major_formatter('{:.3g}'.format)
-    ax[1,1].legend()
-
-    plt.savefig("bce_loss_residuals_10.pdf", bbox_inches="tight", dpi=300)
-
-    _, locationax = plt.subplots(ncols=2, nrows=2, figsize=(10,10), constrained_layout=True)
-    tempLoc = validLoc
-    locMask = np.where((validLoc[:,0] != -10000) & (validLoc[:,1] != -10000) & (validLoc[:,2] != -10000), 1, 0)
-    tempLoc = tempLoc[locMask]
-    h1 = locationax[0,0].hist2d(validLoc[~correct_mask,0],validLoc[~correct_mask,1],bins=1000,cmap='viridis',cmin=1,vmin=1,vmax=500)
-    locationax[0,0].set_title('Y vs X of Decay for Identifing Decay as Scattering')
-    locationax[0,0].set_xlabel('X Coordinate')
-    locationax[0,0].set_ylabel('Y Coordinate')
-    plt.colorbar(h1[3], ax=locationax[0,0], label='Counts')
-    locationax[0,0].set_xlim(-1000,1000)
-    locationax[0,0].set_ylim(-1000,1000)
-
-    h1 = locationax[0,1].hist2d(validLoc[~correct_mask,2],validLoc[~correct_mask,0],bins=1000,cmap='viridis',cmin=1,vmin=1,vmax=500)
-    locationax[0,1].set_title('Z vs X of Decay for Identifing Decay as Scattering')
-    locationax[0,1].set_xlabel('Z Coordinate')
-    locationax[0,1].set_ylabel('X Coordinate')
-    plt.colorbar(h1[3], ax=locationax[0,1], label='Counts')
-    locationax[0,1].set_xlim(-2000,2000)
-    locationax[0,1].set_ylim(-1000,1000)
-
-    h1 = locationax[1,0].hist2d(validLoc[~correct_mask,2],validLoc[~correct_mask,1],bins=1000,cmap='viridis',cmin=1,vmin=1,vmax=500)
-    locationax[1,0].set_title('Z vs Y of Decay for Identifing Decay as Scattering')
-    locationax[1,0].set_xlabel('Z Coordinate')
-    locationax[1,0].set_ylabel('Y Coordinate')
-    plt.colorbar(h1[3], ax=locationax[1,0], label='Counts')
-    locationax[1,0].set_xlim(-2000,2000)
-    locationax[1,0].set_ylim(-1000,1000)
+    logits = torch.cat(logits).numpy()
+    truth = torch.cat(truth).numpy()
+    return logits, truth, tot_loss / max(tot_n, 1)
 
 
-    _, ax2 = plt.subplots(ncols=2, nrows=2, figsize=(10,10), constrained_layout=True)
+def working_points(truth, score, prior=None, targets=(0.50, 0.80, 0.90, 0.95, 0.99), negatives=None):
+    """Efficiency/rejection at fixed signal efficiency, optionally re-weighted.
 
-    ax2[0,0].hist(sigmoid_output, bins=30, label=fr'$\mu={np.mean(sigmoid_output):.3f}$'+'\n'+fr'$\sigma={np.std(sigmoid_output):.3f}$')
-    ax2[0,0].set_title('Sigmoid Distribution')
-    ax2[0,0].set_xlabel('Sigmoid Value')
-    ax2[0,0].set_ylabel('Counts')
-    ax2[0,0].xaxis.set_major_formatter('{:.3g}'.format)
-    ax2[0,0].legend()
+    The label is positive for 13% of the MC events (16% after the chv cut); for a
+    210 MeV/c muon the physical probability of decaying over the labelled window
+    is about 0.1%. Precision measured on the sample as generated is therefore
+    meaningless for real data, so quote it at the physical prior instead
+    (reactionData.physical_prior).
+    """
+    fpr, tpr, thr = roc_curve(truth, score)
+    rows = []
+    for target in targets:
+        i = int(np.searchsorted(tpr, target))
+        i = min(i, len(tpr) - 1)
+        eff, fa = tpr[i], fpr[i]
+        # The rate that matters for precision on real data is the one on the
+        # background real data is made of. With `negatives` (a mask of the
+        # label-0 events to count), fpr is measured on that subset only.
+        if negatives is not None:
+            fa = float((score[negatives] >= thr[i]).mean())
+        row = {"target_eff": target, "eff": eff, "fpr": fa, "rejection": (1.0 / fa if fa > 0 else np.inf), "threshold": thr[i]}
+        if prior is not None:
+            # Precision at an arbitrary signal prior pi: pi*eff / (pi*eff + (1-pi)*fpr)
+            denom = prior * eff + (1.0 - prior) * fa
+            row["precision_at_prior"] = (prior * eff / denom) if denom > 0 else float("nan")
+        rows.append(row)
+    return rows
 
-    ax2[0,1].hist(truth - predicted, bins=3, label=fr'$\mu={np.mean(truth - predicted):.3f}$'+'\n'+fr'$\sigma={np.std(truth - predicted):.3f}$')
-    ax2[0,1].set_title('Residuals')
-    ax2[0,1].set_xlabel('Truth - Predicted')
-    ax2[0,1].set_ylabel('Counts')
-    ax2[0,1].xaxis.set_major_formatter('{:.3g}'.format)
-    ax2[0,1].legend()
 
-    fpr, tpr, _ = roc_curve(truth, sigmoid_output)
-    roc_auc = auc(fpr, tpr)
-    
-    ax2[1,0].plot(fpr, tpr, label=f'ROC AUC = {roc_auc:.3f}')
-    ax2[1,0].fill_between(fpr, tpr, alpha=0.1)
-    ax2[1,0].plot([0, 1], [0, 1], 'k--',alpha=0.5,label='Random Guessing')
-    x = np.array([0, 0, 1])
-    y = np.array([0, 1, 1])
-    ax2[1,0].plot(x, y,color='r',alpha=0.5, label='Perfect')
-    ax2[1,0].set_title('ROC Curve')
-    ax2[1,0].set_xlabel('False Positive Rate')
-    ax2[1,0].set_ylabel('True Positive Rate')
-    ax2[1,0].legend(loc='lower right')
+def report_metrics(truth, logits, meta=None, prior=None, benchmark=None, benchmark_name="ReactionID cuts", threshold=0.5):
+    score = 1.0 / (1.0 + np.exp(-logits))
+    pred = (score > threshold).astype(np.float32)
 
-    precision, recall, _ = precision_recall_curve(truth, sigmoid_output)
-    avg_precision = average_precision_score(truth, sigmoid_output)
-    ax2[1,1].plot(recall, precision, label=f'Avg Precision = {avg_precision:.3f}')
-    ax2[1,1].fill_between(recall, precision, alpha=0.1)
-    ax2[1,1].plot([0,0.5],[1,0.5], 'k--', alpha=0.5, label='Random Guessing')
-    x = np.array([0, 1, 1])
-    y = np.array([1, 1, 0.5])
-    ax2[1,1].plot(x, y, color='r', alpha=0.5, label='Perfect')
-    ax2[1,1].set_title('Precision-Recall Curve')
-    ax2[1,1].set_xlabel('Recall')
-    ax2[1,1].set_ylabel('Precision')
-    ax2[1,1].legend()
+    print("\n=== Classification ===")
+    print(f"  events           : {len(truth)}")
+    print(f"  decay fraction   : {truth.mean():.4f}   (sample prior)")
+    print(f"  accuracy         : {(pred == truth).mean()*100:.3f}%   (score > {threshold:g})")
+    fpr, tpr, _ = roc_curve(truth, score)
+    print(f"  ROC AUC          : {auc(fpr, tpr):.4f}")
+    print(f"  avg precision    : {average_precision_score(truth, score):.4f}  (at the sample prior, not physical)")
 
-    plt.savefig("bce_sigmoid_10.pdf", bbox_inches="tight", dpi=300)
+    print("\n=== Working points ===")
+    hdr = f"  {'target':>7} {'eff':>7} {'fpr':>9} {'rejection':>10} {'thresh':>9}"
+    if prior is not None:
+        hdr += f" {'prec@' + format(prior, '.4f'):>12}"
+    print(hdr)
+    for r in working_points(truth, score, prior=prior):
+        line = f"  {r['target_eff']:>7.2f} {r['eff']:>7.3f} {r['fpr']:>9.4f} {r['rejection']:>10.1f} {r['threshold']:>9.3f}"
+        if prior is not None:
+            line += f" {r['precision_at_prior']:>12.4f}"
+        print(line)
 
-    _, ax3 = plt.subplots(ncols=2, nrows=2, figsize=(10,10), constrained_layout=True)
+    # Break the result out by where the muon actually decayed. A decay 5 m past SPS
+    # is a different problem from one in the target, and averaging them hides both.
+    if meta is not None and "decay_region" in meta:
+        print(f"\n=== By decay region (score > {threshold:g}) ===")
+        region = meta["decay_region"].to_numpy()
+        for code, name in REGION_NAMES.items():
+            m = region == code
+            if m.sum() == 0:
+                continue
+            print(f"  {name:>11} (n={int(m.sum()):>7}): correctly tagged {(pred[m] == truth[m]).mean()*100:6.2f}%")
 
-    n_xbins = 30
-    x_bins = np.linspace(np.min(raw_output), np.max(raw_output), n_xbins)
-    y_bins = [-0.5, 0.5, 1.5] 
-    h = ax3[0,0].hist2d(raw_output, (correct_mask).astype(int), bins=[x_bins, y_bins], cmap='viridis', cmin=1)
-    ax3[0,0].set_title('Logit vs Correct Prediction')
-    ax3[0,0].set_xlabel('Logit Value')
-    ax3[0,0].set_ylabel('Correct Prediction')
-    ax3[0,0].set_yticks([0,1])
-    ax3[0,0].set_yticklabels(['False', 'True'])
-    plt.colorbar(h[3], ax=ax3[0,0], label='Counts')
+    # The cooker already has a cut-based answer; a classifier that cannot beat it is
+    # not earning its keep.
+    if benchmark is not None:
+        bm = np.asarray(benchmark, dtype=np.float64)
+        valid = ~np.isnan(bm)
+        if valid.sum() > 0:
+            bt, bp = truth[valid], bm[valid]
+            b_eff = bp[bt == 1].mean() if (bt == 1).any() else float("nan")
+            b_fpr = bp[bt == 0].mean() if (bt == 0).any() else float("nan")
+            print(f"\n=== Benchmark: {benchmark_name} ===")
+            print(f"  defined for {valid.sum()} of {len(truth)} events ({valid.sum()/len(truth)*100:.2f}%)")
+            print(f"  accuracy {(bp == bt).mean()*100:.3f}%   eff {b_eff:.4f}   fpr {b_fpr:.4f}")
+            m_eff = pred[valid][bt == 1].mean() if (bt == 1).any() else float("nan")
+            m_fpr = pred[valid][bt == 0].mean() if (bt == 0).any() else float("nan")
+            print(f"  model on the same events: accuracy {(pred[valid] == bt).mean()*100:.3f}%   eff {m_eff:.4f}   fpr {m_fpr:.4f}")
 
-    bad_indices, good_indices = np.where(truth != predicted)[0], np.where(correct_mask)[0]
-    ax3[0,1].hist(raw_output[bad_indices], bins=60, label='Wrong Predictions', alpha=0.5, histtype='step')
-    ax3[0,1].hist(raw_output[good_indices], bins=60, label='Correct Predictions', alpha=0.5, histtype='step')
-    ax3[0,1].axvline(x=-2.5, color='red', linestyle='--', alpha=0.5, label='Threshold')
-    ax3[0,1].axvline(x=2.5, color='red', linestyle='--', alpha=0.5)
-    ax3[0,1].set_title('Logit Distribution by Prediction')
-    ax3[0,1].set_xlabel('Logit Value')
-    ax3[0,1].set_ylabel('Counts')
-    ax3[0,1].legend()
-    
-    ax3[1,0].hist(decay, bins=30, label="Hit Radii", alpha=0.5, histtype='step')
-    ax3[1,0].hist(decay[bad_indices], bins=30, label='Wrong Predictions', alpha=0.5, histtype='step')
-    ax3[1,0].hist(decay[good_indices], bins=30, label='Correct Predictions', alpha=0.5, histtype='step')
-    ax3[1,0].set_title('Hit Radius Distribution by Prediction')
-    ax3[1,0].set_xlabel('Hit Radius (mm)')
-    ax3[1,0].set_ylabel('Counts')
-    ax3[1,0].legend()
+    return score, pred
 
-    h = ax3[1,1].hist2d(decay, raw_output, bins=30, cmap='viridis', cmin=1)
-    ax3[1,1].set_title('Logit vs Hit Radius')
-    ax3[1,1].set_xlabel('Hit Radius (mm)')
-    ax3[1,1].set_ylabel('Logit Value')
-    ax3[1,1].xaxis.set_major_formatter('{:.3g}'.format)
-    plt.colorbar(h[3], ax=ax3[1,1], label='Counts')
 
-    plt.savefig("bce_logits_10.pdf", bbox_inches="tight", dpi=300)
+def plot_and_test_model_BCE(
+    model,
+    losses=None,
+    valid_losses=None,
+    num_epochs=None,
+    device=None,
+    straws=None,
+    truth=None,
+    lr=None,
+    meta=None,
+    prior=None,
+    outprefix="bce",
+    show=False,
+    threshold=0.5,
+):
+    logits, truth, avg_loss = predict(model, straws, truth, device)
+    print(f"Average validation loss: {avg_loss:.5f}")
 
-    # _, ax4 = plt.subplots(ncols=2, nrows=2, figsize=(10,10), constrained_layout=True)
+    # ReactionID's cut-based verdict, the thing a classifier has to beat. It is
+    # only a fair comparison where it was actually evaluated: the flag is NaN for
+    # events with no reconstructed vertex, and on this MC it is additionally stuck
+    # at "decay" for every vertex because the run-17606 TOF/beta alignment puts
+    # out_beta below the muon cut for everything. report_metrics handles the NaNs;
+    # a degenerate benchmark shows up as a rate of 1.0 rather than being hidden.
+    benchmark = meta["rid_is_decay"].to_numpy() if (meta is not None and "rid_is_decay" in meta) else None
+    score, pred = report_metrics(truth, logits, meta=meta, prior=prior, benchmark=benchmark, threshold=threshold)
+    correct = truth == pred
 
-    # lessThan1mm = np.where(hitradii < 1.0)[0]
-    # moreThan1mm = np.where(hitradii >= 1.0)[0]
-    # lessThan25mm = np.where(hitradii < 2.5)[0]
-    # moreThan25mm = np.where(hitradii >= 2.5)[0]
+    # --- training curves and score distributions ----------------------------
+    _, ax = plt.subplots(ncols=2, nrows=2, figsize=(10, 10), constrained_layout=True)
 
-    # moreThan25logit = np.where(np.abs(raw_output) >= 2.5)[0]
+    if losses is not None:
+        n = len(losses)
+        ax[0, 0].plot(range(n), losses, color="r", label="Training loss")
+        print(f"Minimum training loss: {min(losses):.5f}")
+        if valid_losses:
+            ax[0, 0].plot(range(len(valid_losses)), valid_losses, color="b", label="Holdout loss (early stopping)")
+            print(f"Minimum holdout loss: {min(valid_losses):.5f}")
+        if lr is not None:
+            a = ax[0, 0].twinx()
+            a.set_ylabel("Learning Rate", color="g")
+            a.plot(range(len(lr)), lr, color="g", alpha=0.5, linestyle="--", label="Learning rate")
+            a.tick_params(axis="y", labelcolor="g")
+            a.yaxis.set_major_formatter("{:.3g}".format)
+            lines, labels = ax[0, 0].get_legend_handles_labels()
+            l2, lb2 = a.get_legend_handles_labels()
+            ax[0, 0].legend(lines + l2, labels + lb2, fontsize=7.5)
+        else:
+            ax[0, 0].legend()
+        ax[0, 0].set_yscale("log")
+    ax[0, 0].set_title("Loss vs Epoch")
+    ax[0, 0].set_xlabel("Epoch")
+    ax[0, 0].set_ylabel("Loss")
 
-    # ax4[0,0].hist(raw_output[lessThan1mm], bins=30, label='Hit Radius < 1mm', alpha=0.5, histtype='step')
-    # ax4[0,0].hist(raw_output[moreThan1mm], bins=30, label='Hit Radius >= 1mm', alpha=0.5, histtype='step')
-    # ax4[0,0].axvline(x=-2.5, color='red', linestyle='--', alpha=0.5, label='Threshold')
-    # ax4[0,0].axvline(x=2.5, color='red', linestyle='--', alpha=0.5)
-    # ax4[0,0].set_title('Logit Distribution by Hit Radius')
-    # ax4[0,0].set_xlabel('Logit Value')
-    # ax4[0,0].set_ylabel('Counts')
-    # ax4[0,0].legend()
+    h = ax[0, 1].hist2d(truth, pred, bins=2, cmin=1)
+    ax[0, 1].set_title("Truth vs Predicted Decay")
+    ax[0, 1].set_xlabel("Truth")
+    ax[0, 1].set_ylabel("Predicted")
+    plt.colorbar(h[3], ax=ax[0, 1], label="Entries")
 
-    # h = ax4[0,1].hist2d(raw_output[lessThan1mm], (truth[lessThan1mm] == predicted[lessThan1mm]).astype(int), bins=[x_bins, y_bins], cmap='viridis', cmin=1)
-    # ax4[0,1].set_title('Logit vs Correct Prediction (Hit Radius < 1mm)')
-    # ax4[0,1].set_xlabel('Logit Value')
-    # ax4[0,1].set_ylabel('Correct Prediction')
-    # ax4[0,1].set_yticks([0,1])
-    # ax4[0,1].set_yticklabels(['False', 'True'])
-    # plt.colorbar(h[3], ax=ax4[0,1], label='Counts')
+    ax[1, 0].hist(logits[truth == 0], bins=60, histtype="step", label="Truth: no decay")
+    ax[1, 0].hist(logits[truth == 1], bins=60, histtype="step", label="Truth: decay")
+    ax[1, 0].set_title("Logit by Truth Class")
+    ax[1, 0].set_xlabel("Logit")
+    ax[1, 0].set_ylabel("Counts")
+    ax[1, 0].legend()
 
-    # h = ax4[1,0].hist2d(raw_output[moreThan1mm], (truth[moreThan1mm] == predicted[moreThan1mm]).astype(int), bins=[x_bins, y_bins], cmap='viridis', cmin=1)
-    # ax4[1,0].set_title('Logit vs Correct Prediction (Hit Radius >= 1mm)')
-    # ax4[1,0].set_xlabel('Logit Value')
-    # ax4[1,0].set_ylabel('Correct Prediction')
-    # ax4[1,0].set_yticks([0,1])
-    # ax4[1,0].set_yticklabels(['False', 'True'])
-    # plt.colorbar(h[3], ax=ax4[1,0], label='Counts')
+    ax[1, 1].hist(logits[correct], bins=60, histtype="step", alpha=0.7, label="Correct")
+    ax[1, 1].hist(logits[~correct], bins=60, histtype="step", alpha=0.7, label="Wrong")
+    ax[1, 1].set_title("Logit by Outcome")
+    ax[1, 1].set_xlabel("Logit")
+    ax[1, 1].set_ylabel("Counts")
+    ax[1, 1].legend()
 
-    # h = ax4[1,1].hist2d(raw_output[moreThan25mm], (truth[moreThan25mm] == predicted[moreThan25mm]).astype(int), bins=[x_bins, y_bins], cmap='viridis', cmin=1)
-    # ax4[1,1].set_title('Logit vs Hit Radius (Hit Radius >= 2.5mm)')
-    # ax4[1,1].set_xlabel('Logit Value')
-    # ax4[1,1].set_ylabel('Correct Prediction')  
-    # ax4[1,1].set_yticks([0,1])
-    # ax4[1,1].set_yticklabels(['False', 'True'])
-    # plt.colorbar(h[3], ax=ax4[1,1], label='Counts')
+    plt.savefig(f"{outprefix}_loss_residuals.pdf", bbox_inches="tight", dpi=300)
 
-    # plt.savefig('bce_hit_radii_10.pdf', bbox_inches='tight', dpi=300)
+    # --- ROC / PR -----------------------------------------------------------
+    _, ax2 = plt.subplots(ncols=2, nrows=2, figsize=(10, 10), constrained_layout=True)
 
-    # print(f'Percent correct for >= 1mm: {np.sum((truth[moreThan1mm] == predicted[moreThan1mm]).astype(int))/len(moreThan1mm)*100:.3f}')
-    # print(f'Percent correct for < 1mm: {np.sum((truth[lessThan1mm] == predicted[lessThan1mm]).astype(int))/len(lessThan1mm)*100:.3f}')
-    # print(f'Percent correct for >= 2.5mm: {np.sum((truth[moreThan25mm] == predicted[moreThan25mm]).astype(int))/len(moreThan25mm)*100:.3f}')
-    # print(f'Percent correct for < 2.5mm: {np.sum((truth[lessThan25mm] == predicted[lessThan25mm]).astype(int))/len(lessThan25mm)*100:.3f}')
+    ax2[0, 0].hist(score, bins=50, label=rf"$\mu={np.mean(score):.3f}$" + "\n" + rf"$\sigma={np.std(score):.3f}$")
+    ax2[0, 0].set_title("Sigmoid Distribution")
+    ax2[0, 0].set_xlabel("Score")
+    ax2[0, 0].set_ylabel("Counts")
+    ax2[0, 0].legend()
 
-    # percentOver5logit = np.sum(np.abs(raw_output) > 5.0) / len(raw_output) * 100
-    # print(f'Percent of logits with abs value > 5: {percentOver5logit:.3f}')
-    # percentOver5logitCorrect = np.sum(np.abs(raw_output[correct_mask]) > 5.0) / np.sum(np.abs(raw_output) > 5.0) * 100
-    # print(f'Percent logits with abs value > 5 on correct side: {percentOver5logitCorrect:.3f}')
+    if meta is not None and "decay_region" in meta:
+        region = meta["decay_region"].to_numpy()
+        for code, name in REGION_NAMES.items():
+            m = region == code
+            if m.sum() > 20:
+                ax2[0, 1].hist(score[m], bins=50, histtype="step", density=True, label=f"{name} (n={int(m.sum())})")
+        ax2[0, 1].set_title("Score by Decay Region")
+        ax2[0, 1].set_xlabel("Score")
+        ax2[0, 1].set_ylabel("Density")
+        ax2[0, 1].legend(fontsize=8)
 
-    # over25_mask = np.abs(raw_output) > 2.5
-    # moreThan1mm_mask = hitradii >= 1.0
-    
-    # percentOver25logit = np.sum(over25_mask & moreThan1mm_mask) / len(raw_output) * 100
-    # print(f'Percent of logits with abs value > 2.5 and radius >= 1 mm: {percentOver25logit:.3f}')
-    # correct_and_over25_mask = over25_mask & moreThan1mm_mask & correct_mask
-    # percentOver25logitCorrect = np.sum(correct_and_over25_mask) / np.sum(over25_mask & moreThan1mm_mask) * 100
-    # print(f'Percent logits with abs value > 2.5 and radius >= 1 mm on correct side: {percentOver25logitCorrect:.3f}')
+    fpr, tpr, _ = roc_curve(truth, score)
+    ax2[1, 0].plot(fpr, tpr, label=f"ROC AUC = {auc(fpr, tpr):.3f}")
+    ax2[1, 0].fill_between(fpr, tpr, alpha=0.1)
+    ax2[1, 0].plot([0, 1], [0, 1], "k--", alpha=0.5, label="Random")
+    if benchmark is not None:
+        bm = np.asarray(benchmark, dtype=np.float64)
+        v = ~np.isnan(bm)
+        if v.sum() > 0 and (truth[v] == 1).any() and (truth[v] == 0).any():
+            ax2[1, 0].plot(
+                bm[v][truth[v] == 0].mean(), bm[v][truth[v] == 1].mean(), "r*", markersize=14, label="ReactionID cuts"
+            )
+    ax2[1, 0].set_title("ROC Curve")
+    ax2[1, 0].set_xlabel("False Positive Rate")
+    ax2[1, 0].set_ylabel("True Positive Rate")
+    ax2[1, 0].legend(loc="lower right")
 
-    # plt.tight_layout()
-    plt.show()
+    precision, recall, _ = precision_recall_curve(truth, score)
+    ax2[1, 1].plot(recall, precision, label=f"Avg Precision = {average_precision_score(truth, score):.3f}")
+    ax2[1, 1].fill_between(recall, precision, alpha=0.1)
+    ax2[1, 1].axhline(truth.mean(), color="k", linestyle="--", alpha=0.5, label=f"Sample prior = {truth.mean():.3f}")
+    ax2[1, 1].set_title("Precision-Recall (at the sample prior)")
+    ax2[1, 1].set_xlabel("Recall")
+    ax2[1, 1].set_ylabel("Precision")
+    ax2[1, 1].legend()
+
+    plt.savefig(f"{outprefix}_sigmoid.pdf", bbox_inches="tight", dpi=300)
+
+    # --- where in the detector do the mistakes happen? ----------------------
+    # `logits`, `pred` and `meta` are all in file order because the loader above
+    # does not shuffle, so these masks line up with the decay coordinates.
+    if meta is not None and {"MuonDecay_X", "MuonDecay_Y", "MuonDecay_Z"} <= set(meta.columns):
+        loc = meta[["MuonDecay_X", "MuonDecay_Y", "MuonDecay_Z"]].to_numpy(dtype=np.float64)
+        wrong = (~correct) & np.isfinite(loc).all(axis=1)
+        if wrong.sum() > 0:
+            _, lax = plt.subplots(ncols=2, nrows=2, figsize=(10, 10), constrained_layout=True)
+            for a, (i, j, xl, yl, xlim, ylim) in zip(
+                [lax[0, 0], lax[0, 1], lax[1, 0]],
+                [
+                    (0, 1, "X (mm)", "Y (mm)", (-1000, 1000), (-1000, 1000)),
+                    (2, 0, "Z (mm)", "X (mm)", (-2000, 6000), (-1000, 1000)),
+                    (2, 1, "Z (mm)", "Y (mm)", (-2000, 6000), (-1000, 1000)),
+                ],
+            ):
+                hh = a.hist2d(loc[wrong, i], loc[wrong, j], bins=200, cmap="viridis", cmin=1, range=[xlim, ylim])
+                a.set_title(f"Misidentified decays: {yl} vs {xl}")
+                a.set_xlabel(xl)
+                a.set_ylabel(yl)
+                plt.colorbar(hh[3], ax=a, label="Counts")
+
+            lax[1, 1].hist(loc[np.isfinite(loc).all(axis=1), 2], bins=100, histtype="step", label="All decays")
+            lax[1, 1].hist(loc[wrong, 2], bins=100, histtype="step", label="Misidentified")
+            lax[1, 1].set_title("Decay Z Distribution")
+            lax[1, 1].set_xlabel("Z (mm)")
+            lax[1, 1].set_ylabel("Counts")
+            lax[1, 1].legend()
+            plt.savefig(f"{outprefix}_decay_location.pdf", bbox_inches="tight", dpi=300)
+
+    print(f"\nWrote {outprefix}_loss_residuals.pdf, {outprefix}_sigmoid.pdf, {outprefix}_decay_location.pdf")
+    if show:
+        plt.show()
+    plt.close("all")
